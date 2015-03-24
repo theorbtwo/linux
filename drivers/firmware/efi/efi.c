@@ -274,6 +274,10 @@ static __initdata efi_config_table_type_t common_tables[] = {
 	{SMBIOS_TABLE_GUID, "SMBIOS", &efi.smbios},
 	{SMBIOS3_TABLE_GUID, "SMBIOS 3.0", &efi.smbios3},
 	{UGA_IO_PROTOCOL_GUID, "UGA", &efi.uga},
+        {EFI_DEBUG_IMAGE_INFO_TABLE_GUID, "debug info", NULL},
+        {EFI_MEMORY_TYPE_INFORMATION_TABLE_GUID, "memory type", NULL},
+        {EFI_HOB_LIST_TABLE_GUID, "hand-off block", &efi.hob},
+        {EFI_DXE_SERVICES_TABLE_GUID, "DXE services", NULL},
 	{NULL_GUID, NULL, NULL},
 };
 
@@ -286,9 +290,11 @@ static __init int match_config_table(efi_guid_t *guid,
 	if (table_types) {
 		for (i = 0; efi_guidcmp(table_types[i].guid, NULL_GUID); i++) {
 			if (!efi_guidcmp(*guid, table_types[i].guid)) {
-				*(table_types[i].ptr) = table;
-				pr_cont(" %s=0x%lx ",
-					table_types[i].name, table);
+                                unsigned long *ptr = table_types[i].ptr;
+                                if (ptr)
+				        *ptr = table;
+				pr_cont(" %s%s=0x%lx%s ",
+					ptr?"":"(", table_types[i].name, table, ptr?"":")");
 				return 1;
 			}
 		}
@@ -326,8 +332,12 @@ int __init efi_config_parse_tables(void *config_tables, int count, int sz,
 			table = ((efi_config_table_32_t *)tablep)->table;
 		}
 
-		if (!match_config_table(&guid, table, common_tables))
-			match_config_table(&guid, table, arch_tables);
+                // Don't just dump completely unknown ones on the floor.
+		if (!match_config_table(&guid, table, common_tables) &&
+                    !match_config_table(&guid, table, arch_tables)) {
+                  char guid_str[EFI_VARIABLE_GUID_LEN+1];
+                  pr_cont(" Unknown %s=0x%lx\n", efi_guid_to_str(&guid, guid_str), table);
+                }
 
 		tablep += sz;
 	}
